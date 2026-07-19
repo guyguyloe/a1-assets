@@ -59,21 +59,17 @@ The discriminator collapses to one question: **does the group present a collecti
 
 The pi repo shows the difference. `pi-ai`'s public surface (`packages/ai/src/index.ts`) surfaces the two cases differently:
 
-- **`utils/` is surfaced per-file**: `export * from "./utils/diagnostics.ts"`, `…/json-parse.ts`, `…/retry.ts`. Each helper cherry-picked individually, no `export * from "./utils"`. The folder is a label over independent modules — a clear logical section.
-- **`providers/` is surfaced as a collective subpath**: the `index.ts` comment declares *"Provider factories live under `@earendil-works/pi-ai/providers/*`,"* and `providers/all.ts` is the registry of every vendor adapter behind one `Provider` interface (`createProvider(...)` in `models.ts`, with every vendor returning `Provider<"...">`). Collective interface → a module.
+- **`utils/` is surfaced per-file**: `export * from "./utils/diagnostics.ts"`, `…/json-parse.ts`, `…/retry.ts`. Each helper cherry-picked individually — no `export * from "./utils"`. The folder is a label over independent modules: a clear logical section.
+- **`providers/` is surfaced as a collective subpath**: the `index.ts` comment declares *"Provider factories live under `@earendil-works/pi-ai/providers/*`,"* and `providers/all.ts` registers every vendor adapter behind one `Provider` interface. Collective interface → a module.
 
-And `utils/`'s helpers are mostly pure (`shortHash`, `repairJson`, `headersToRecord`), so this particular section doesn't exhibit shared state. The "possibly some shared state" caveat belongs to the general definition, not to this example.
+(`utils/`'s helpers are mostly pure — `shortHash`, `repairJson`, `headersToRecord` — so this particular section doesn't exhibit shared state. The "possibly some shared state" caveat belongs to the general definition, not to this example.)
 
 So the reframe:
 
 - Say **module** where I had "subsystem." Scale-agnostic, already covers the package- and folder-sized cases.
 - Keep **logical section** as the one genuinely new term: for the clusters that don't cross a collective interface.
 
-## The unease that stayed
-
-And still, confirming the discriminator didn't resolve the unease. It was correct, but it wasn't the axis that explains *why* a well-organized codebase like pi's feels well-organized. The rename killed the bad justification — "subsystem" as a container-shape category distinct from module — but it left my two-layer model with no foundation.
-
-Both a module and a logical section pass the deletion test. Both earn their keep. So what actually separates a cluster with a collective interface from a cluster with a shared label, if "module" is scale-agnostic and both hide complexity?
+And still, confirming the discriminator didn't resolve my unease. It was correct, but it wasn't the axis that explains *why* a well-organized codebase like pi's feels well-organized. Both a module and a logical section pass the deletion test; both earn their keep. So what actually separates a cluster with a collective interface from a cluster with a shared label, if "module" is scale-agnostic and both hide complexity?
 
 The vocabulary had the discriminator and no reason for it. That was the dig.
 
@@ -88,11 +84,27 @@ This re-grounding promotes it to the axis. The binary isn't container shape, and
 - A module whose interface lives at an **external seam** is one thing.
 - A module whose interface lives at an **internal seam** — private to its package's implementation — is another.
 
-Here "package" isn't a loose synonym for "module"; it earns a precise seat. The external-seam module is realized as a package, so package boundaries and seam boundaries fuse into one system instead of two. This isn't seam type escaping container shape — it's reusing the container word the repo already has as the carrier for the external value, so a single boundary system runs. And **logical section** is the one coined term: a module whose seam is internal.
+Here "package" isn't a loose synonym for "module"; it earns a precise seat. The external-seam module is realized as a package, so package boundaries and seam boundaries fuse into one system instead of two. And **logical section** is the one coined term: a module whose seam is internal.
 
-That's the whole distinction, and it's the one the rename couldn't produce: the rename nullified a bad justification, but it couldn't produce an addressing scheme. Seam type did. It also retired "subsystem" for good — the external case already had a word.
+```
+A thread crossing seams:
 
-What makes seam type more than a label is that it's **addressable**. Tag every seam with its layer and structure becomes a query rather than git archaeology. Each seam has an address you can point at, and ADRs can attach to the seam they decided. A decision about a joint is no longer a free-floating paragraph — it has a home at the edge it shaped. And each hop carries its rule:
+┌──────────── package A ─────────────┐          ┌─── package B ───┐
+│                                    │          │                 │
+│  root module ─▶ section ─▶ module  │═══╦═════▶│  section        │
+│                (utils/) (providers)│   ║      │                 │
+└────────────────────────────────────┘   ║      └─────────────────┘
+   ─▶ internal seams:                    ║
+      shared state, helpers freely       ║  external seam:
+                                         ║  identity-only references,
+                                         ║  no shared state
+```
+
+The payoff is immediate when you're reading unfamiliar code: the moment a thread crosses an external seam, you *know* the rule changes — you can't reach for shared state across the joint, only identity and messages. The smell this catches is the reverse: a "section" that quietly grew a collective interface, or a helper folder other packages import from directly — a seam that exists in practice but has no name, no rule, and no recorded decision.
+
+That's the whole distinction, and it's the one the rename couldn't produce. The rename nullified a bad justification, but it couldn't produce an addressing scheme. Seam type did — and it retired "subsystem" for good, because the external case already had a word.
+
+What makes seam type more than a label is that it's **addressable**. Tag every seam with its layer and structure becomes a query rather than git archaeology. Each seam has an address you can point at, and ADRs can attach to the seam they decided — a decision about a joint is no longer a free-floating paragraph; it has a home at the edge it shaped. And each hop carries its rule:
 
 - Across an **external seam** you assume identity-only references: the two sides don't share state; they cross by model identity and message protocol.
 - Inside an **internal seam** you may assume shared implementation context, because siblings can share state and helpers freely.
@@ -107,34 +119,31 @@ A **thread** is a traversal over addressable seams, not a new container. Point a
 
 > starting module + the interface crossings out to the next module's section
 
-That's the same shape my Pi's skills already think in:
+That's the same shape my Pi's skills already think in — `write-tests` maps "seams where behavior is observable," and `trace-component-flow` follows a single UI root's full downstream path. Both are threads, already shipped. Both are scoped: `trace-component-flow` to one UI root, forward only, by necessity, because it couldn't generalize.
 
-- `write-tests` maps "seams where behavior is observable" and hunts for the gap where a test sits at the *wrong* seam.
-- `trace-component-flow` follows a single UI root's full downstream path.
+What I was reaching for was the generalization — any named module over addressable seams, in both directions:
 
-Both are threads, already shipped. Both are scoped — `trace-component-flow` to one UI root, forward only, by necessity, because it couldn't generalize.
+▸ **Forward — what it triggers.** The path from a module through the events and actions it dispatches to downstream effects.
 
-What I was reaching for was the generalization: any named module over addressable seams, in both directions.
+▸ **Backward — what it needs.** The closure of every line of code that exists to make the root observable.
 
-- **Forward** is what it triggers: the path from a module through the events and actions it dispatches to downstream effects.
-- **Backward** is the closure of what it needs: every line of code that exists to make the root observable.
+The layer tag makes the traversal safe at a higher abstraction, because each hop's address carries the assumption that holds there: shared state inside, identity-only across.
 
-The layer tag makes the traversal safe at a higher abstraction, because each hop's address carries the assumption that holds there: shared state inside, identity-only across. [link to full exploration at the end, STRUCTURE.md]
+This is also now a concrete tool. I've shipped the generalization as a skill, **`trace-thread`** — it drops straight into any setup already running Pocock's skills, without modifying any of them. It speaks the same frozen vocabulary (module, interface, seam, adapter), adds only the seam-type axis and the term "logical section," and builds on `trace-component-flow` rather than replacing it (that skill stays the tighter tool for the forward, single-UI-root case). It's read-only — `rg`, reads, type lookups — and every hop it reports cites `path:line` evidence with its seam address. [Full exploration: STRUCTURE.md]
 
-## My confidence inverted
+## Threads as program slicing (this wasn't new)
 
-That generalization is **program slicing**, studied since the early 80s. Mark Weiser introduced it in 1981 as a debugging and comprehension aid — my exact use case.
+My confidence inverted when I looked the generalization up.
 
-- A *backward slice* of a point is every statement that affects it.
-- A *forward slice* is every statement it affects.
+It's **program slicing**, studied since the early 80s. Mark Weiser introduced it in 1981 as a debugging and comprehension aid — my exact use case. A *backward slice* of a point is every statement that affects it; a *forward slice* is every statement it affects. My "backward is the closure of what it needs" *is* the backward slice; my "forward is what it triggers" *is* the forward slice. The named module I start from is the *slicing criterion*; the thread is the slice.
 
-My "backward is the closure of what it needs" *is* the backward slice; my "forward is what it triggers" *is* the forward slice. The named module I start from is the *slicing criterion*; the thread is the slice. And the addressable structure I traverse (structure-as-a-query, mappable back to source) is what concern graphs (Robillard & Murphy, 2002) and intensional views (Snelting) already gave the field.
-
-The task motivating it — "I can't articulate the bug so I trace the path" — is *feature location*, originally framed as the *concept assignment problem* (Biggerstaff, 1993).
+The rest of the scaffolding was already in the literature too. The motivating task — "I can't articulate the bug so I trace the path" — is *feature location*, originally framed as the *concept assignment problem* (Biggerstaff, 1993). The addressable structure I traverse (structure-as-a-query, mappable back to source) is what concern graphs (Robillard & Murphy, 2002) and intensional views (Snelting) already gave the field.
 
 So the mechanism isn't mine. I re-derived it from first principles, which I'll take as a sign the axis underneath is sound — but the traversal is a rediscovery.
 
-What I think *is* mine is narrower, and it's the synthesis the previous section built to. Three things I'm standing on, none of them mine:
+## What's actually mine
+
+What I think *is* mine is narrower, and it's the synthesis this all built to. Three things I'm standing on, none of them mine:
 
 - The **binary** — external seam vs internal seam — is Parnas' information hiding (1972): the interface is the public surface, the implementation hides the secret; from outside, the internal resource is invisible.
 - The **seam** itself is Michael Feathers' — a place behavior can be altered without editing in place, coined as a testing and refactoring concept in *Working Effectively with Legacy Code*.
@@ -144,7 +153,9 @@ Collectively those give you a public/private binary (Parnas), a named place to a
 
 What I'm adding is repurposing Feathers' seam from a testing concept into the primary structural axis — making *where the seam sits* the organizer rather than container shape, with a rule attached to each hop (shared state inside a package, identity-only references across one), so the layer tag lets you reason over the code at higher abstraction without paraphrasing it. And aiming the whole scheme at the vibe-coding case, where agents and humans navigate the same addressable structure with that shared vocabulary.
 
-To prove the axis held, I re-entered pi-mono and walked a real thread: a user prompt → the agent loop → the LLM stream, tagging each hop with its seam address. The walk that shows the tags holding *is* a thread. The thread is the proof. [full example on github, PI-MONO.md.]
+To prove the axis held, I re-entered pi-mono and walked a real thread: a user prompt → the agent loop → the LLM stream, tagging each hop with its seam address. The walk that shows the tags holding *is* a thread. The thread is the proof.
+
+> **The full thread walk is here: [PI-MONO.md]** — a worked thread through a real monorepo, each hop tagged with its seam address.
 
 ## Net
 
@@ -153,6 +164,7 @@ To prove the axis held, I re-entered pi-mono and walked a real thread: a user pr
 - The discriminator (collective interface vs shared label) is the surface check. Seam type is the foundation beneath it. Both a package and a section pass the deletion test, so what separates them is where the seam sits.
 - **Threads** traverse addressable seams, each hop carrying its rule — but the traversal is program slicing (Weiser, 1981), and the addressable structure is concern graphs (Robillard & Murphy, 2002) / intensional views (Snelting). I arrived at the general form independently from a scoped, forward-only skill; the mechanism was already there.
 - The binary the axis runs on is Parnas' information hiding (1972); the *seam* is Feathers', via @mattpocockuk's skills. What's mine is the repurposing — seam-as-structural-axis, a rule per hop, and the aim: a shared navigation substrate for an AI agent and a human. **Logical section** is the one coined term it leaves behind.
+- The generalization ships as the **`trace-thread`** skill: drag-and-drop into any setup already running Pocock's skills — it modifies none of them, only builds on them.
 - Minimal docs stay useful, down to the same CONTEXT.md files the agents read and maintain. The named concepts in a package's Language section *are* its logical sections, and ADRs attach to the seams they decided.
 
 What started as friction with context switching served as a learning opportunity to improve how I understand and reason over code in general (WIP). Hopefully this helps someone out there.
